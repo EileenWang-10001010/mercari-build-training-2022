@@ -39,6 +39,13 @@ def return_item():
 @app.post("/items")
 def add_item(name: str = Form(...), category: str =Form(...)):
     logger.info(f"Receive item: {name}")
+    with open('items.json') as f:
+        items = json.load(f)
+        if items == "[]":
+            items = {"items":[]}
+        items["items"].append({"name":name, "category":category})
+        f.write(json.dumps(items))
+        
     return {"message": f"item received: {name}"}
 
 @app.get("/image/{items_image}")
