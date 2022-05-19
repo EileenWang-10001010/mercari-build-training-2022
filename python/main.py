@@ -38,6 +38,11 @@ c.execute("""CREATE TABLE IF NOT EXISTS category (
 conn.commit()
 conn.close()
 
+sql = """SELECT items.name,category.name as category,items.image
+        FROM  items INNER JOIN category
+        ON items.category_id =category.id
+        """
+
 def hash_img(image):
     image = hashlib.sha256(image.strip('jpg').encode('utf-8')).hexdigest() + '.jpg'
     return image
@@ -50,13 +55,9 @@ def root():
 def get_all_items():
     conn = sqlite3.connect('mercari.sqlite3')
     c = conn.cursor()
-    c.execute("""SELECT * from items""")
-    items = c.fetchall()
-    r =[]
-    for item in items:
-        c.execute("""SELECT * from category WHERE id == (?)""",[item[2]])
-        r.append({f"name:{item[1]}, category:{(c.fetchone())[1]}, image:{item[3]}"}) 
-    
+    c.execute(sql)
+    r = [dict((c.description[i][0], value)
+                  for i, value in enumerate(row)) for row in c.fetchall()]
     conn.close()
     return {f"items:{r}"}
 
@@ -65,36 +66,33 @@ async def search_items(keyword: str):
     
     conn = sqlite3.connect('mercari.sqlite3')
     c = conn.cursor()
-    c.execute("""SELECT * from items WHERE name == (?)""",[keyword])
-    searchByName = c.fetchall()
-    if (len(searchByName)!=0):
-        r =[]
-        for item in searchByName:
-            c.execute("""SELECT * from category WHERE id == (?)""",[item[2]])
-            r.append({f"name:{item[1]}, category:{(c.fetchone())[1]}, image:{item[3]}"}) 
-        return {f"{r}"}
+    # Inner JOIN is advised by yuting0203 and reference to LingYi0612
+    c.execute(sql+"WHERE items.name LIKE "+ "'%"+keyword+"%'")
+    # list comprehension is reference to LingYi0612
+    r_name = [dict((c.description[i][0], value)
+                  for i, value in enumerate(row)) for row in c.fetchall()]
+    
+    c.execute(sql+"WHERE category LIKE "+ "'%"+keyword+"%'")
+    r_category = [dict((c.description[i][0], value)
+                  for i, value in enumerate(row)) for row in c.fetchall()]
 
-    c.execute("""SELECT * from category WHERE name == (?)""",[keyword])
-    searchByCategory = c.fetchone()
-    if (searchByCategory):
-        c.execute("""SELECT * from items WHERE category_id == (?)""",[searchByCategory[0]])
-        r =[]
-        for item in (c.fetchall()):
-            r.append({f"name:{item[1]}, category:{searchByCategory[1]}, image:{item[3]}"}) 
-        return {f"{r}"}
-    return("Sorry items are not found, please search for keyword name or category ")
+    if len(r_name+r_category)>0:
+        return (f"items:{r_name+r_category}")
+    else:return("Sorry items are not found, please search for keyword name or category ")
 
 @app.get("/items/{item_id}")
 def get_by_id(item_id: int):
     conn = sqlite3.connect('mercari.sqlite3')
     c = conn.cursor()
-    c.execute("""SELECT * from items WHERE id == (?)""",[item_id])
-    r = c.fetchone()
-    c.execute("""SELECT * from items WHERE id == (?)""",[r[2]])
-    id = c.fetchone()
-    r = {f"name:{r[1]} category:{id[1]} image:{r[3]}"}
+    c.execute(sql+"WHERE items.id ==(?)",(item_id,))
+    item = c.fetchone()
     conn.close()
-    return(f"{r}")
+    try:
+        if(len(item)):
+            r = {f"name:{item[0]} category:{item[1]} image:{item[2]}"}
+            return(f"{r}")
+    except:
+        return("This index has no related item. Please input another index.")
 
 
 @app.post("/items")
@@ -122,7 +120,7 @@ async def get_image(items_image):
         raise HTTPException(status_code=400, detail="Image path does not end with .jpg")
 
     if not image.exists():
-        logger.debug(f"Image not found: {image}")
+        logger.INFO(f"Image not found: {image}")
         image = images / "default.jpg"
 
     return FileResponse(image)
