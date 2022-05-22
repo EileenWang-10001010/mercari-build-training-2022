@@ -4,10 +4,13 @@ interface Item {
   id: number;
   name: string;
   category: string;
-  image: string;
+  image: string | File;
 };
 
+
+
 const server = process.env.API_URL || 'http://127.0.0.1:9000';
+
 const placeholderImage = process.env.PUBLIC_URL + '/logo192.png';
 
 export const ItemList: React.FC<{}> = () => {
@@ -24,7 +27,8 @@ export const ItemList: React.FC<{}> = () => {
     })
       .then(response => response.json())
       .then(data => {
-        console.log('GET success:',data);
+        console.log('GET success:',data.items);
+        console.log(process.env);
         setItems(data.items);
       })
       .catch(error => {
@@ -37,14 +41,14 @@ export const ItemList: React.FC<{}> = () => {
   }, []);
   
   return (
-    <div>
+    <div style={{ backgroundColor: '#222427' }}>
       { items.map((item) => {
         return (
-          <div key={item.id} className='ItemList'>
+          <div key={item.id} className='ItemList' >
             {/* TODO: Task 1: Replace the placeholder image with the item image */}
-            <img src={placeholderImage}/>
+            <img  style={{ width: '50%' }} src={server.concat(`/image/${item.image}`)} alt={item.name} />
             <p>
-            <span>Name: {item.name}</span>
+            <span >Name: {item.name}</span>
             <br/>
             <span>Category: {item.category}</span>
             </p>
