@@ -3,7 +3,7 @@ import logging
 import pathlib
 import sqlite3
 import hashlib
-from fastapi import FastAPI, Form, HTTPException
+from fastapi import FastAPI, Form, HTTPException, UploadFile,File
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -52,14 +52,15 @@ def root():
     return {"message": "Hello, world!"}
 
 @app.get("/items")
-def get_all_items():
+async def get_all_items():
     conn = sqlite3.connect('mercari.sqlite3')
     c = conn.cursor()
     c.execute(sql)
     r = [dict((c.description[i][0], value)
                   for i, value in enumerate(row)) for row in c.fetchall()]
     conn.close()
-    return {f"items:{r}"}
+    
+    return {"items":r}
 
 @app.get("/search")
 async def search_items(keyword: str):
@@ -96,18 +97,28 @@ def get_by_id(item_id: int):
 
 
 @app.post("/items")
-def add_item(name: str = Form(...), category: str = Form(...), image: str = Form(...)):
+def add_item(name: str = Form(...), category: str = Form(...), image: UploadFile = File(...)):
     conn = sqlite3.connect('mercari.sqlite3')
     c = conn.cursor()
-
-    c.execute("""SELECT * from category WHERE name == (?)""",[category])
-    categoryData = c.fetchone()
-    if(categoryData == None):
-        c.execute("""INSERT INTO category VALUES (?,?)""",(None,category))
+    
+    try:
         c.execute("""SELECT * from category WHERE name == (?)""",[category])
         categoryData = c.fetchone()
+        if(categoryData == None):
+            c.execute("""INSERT INTO category VALUES (?,?)""",(None,category))
+            c.execute("""SELECT * from category WHERE name == (?)""",[category])
+            categoryData = c.fetchone()
+
+        hashed_image_path = hash_img(image.filename)
+        file_location = f"image/{hashed_image_path}"
+
+        with open(file_location, 'wb+') as file_object:  
+            file_object.write(image.file.read())
+        logger.info({"info": f"file '{image.filename}' saved at '{file_location}'"})
+        c.execute("""INSERT INTO items VALUES (?,?,?,?)""",(None,name,categoryData[0],hashed_image_path))
+    except BaseException as err:
+        print(f"Unexpected {err=}, {type(err)=}")
     
-    c.execute("""INSERT INTO items VALUES (?,?,?,?)""",(None,name,categoryData[0],hash_img(image)))
     conn.commit()
     conn.close()
 
